@@ -7,3 +7,6 @@ Changing variables with many elements to arrays
 
 ## 0.3
 Replace code which generate separated file to actualy generate samples. Now all is execute in one file
+
+## 0.4
+Refactoring code with functions, add logging to file

